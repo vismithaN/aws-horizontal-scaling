@@ -27,6 +27,7 @@ import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.regions.Region;
 
 import static software.amazon.awssdk.services.ec2.model.ResourceType.SECURITY_GROUP;
+import static software.amazon.awssdk.services.ec2.model.ResourceType.VPC;
 
 
 /**
@@ -162,12 +163,14 @@ public final class HorizontalScaling {
         //Monitor LOG file
         Ini ini = getIniUpdate(loadGeneratorDNS, testId);
         while (ini == null || !ini.containsKey("Test finished")) {
+            Thread.sleep(RETRY_DELAY_MILLIS);
             ini = getIniUpdate(loadGeneratorDNS, testId);
             float currentRPS = getRPS(ini);
             boolean timeForLaunch = lastLaunchTime.toInstant().plusSeconds(LAUNCH_DELAY).isBefore(Instant.now());
 
             if(timeForLaunch && currentRPS<50){
-                createInstance(ec2, wsSecurityGroupId, WEB_SERVICE);
+                String newWebDNS =  createInstance(ec2, wsSecurityGroupId, WEB_SERVICE);
+                addWebServiceInstance(loadGeneratorDNS,newWebDNS,testId);
                 lastLaunchTime = new Date();
             }
 
@@ -375,7 +378,16 @@ public final class HorizontalScaling {
     public static Vpc getDefaultVPC(final Ec2Client ec2) {
         //TODO: Remove the exception
         //TODO: Get the default VPC
-        throw new UnsupportedOperationException();
+
+        DescribeVpcsRequest describeVpcsRequest = DescribeVpcsRequest.builder().build();
+        DescribeVpcsResponse response = ec2.describeVpcs(describeVpcsRequest);
+        List<Vpc> vpcList = response.vpcs();
+        for(Vpc vpc : vpcList) {
+            if(vpc.isDefault())
+                return vpc;
+        }
+        return null;
+
     }
 
     /**
