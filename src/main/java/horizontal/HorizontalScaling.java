@@ -450,11 +450,11 @@ public final class HorizontalScaling {
                     .groupId(createSecurityGroupResponse.groupId())
                     .ipPermissions(ipPermission).build();
             ec2.authorizeSecurityGroupIngress(ingressRequest);
-            System.out.printf("Successfully created security group: %s", securityGroupName);
+            System.out.printf("Successfully created security group: %s%n", securityGroupName);
+            System.out.printf("Successfully created security group: %s%n", createSecurityGroupResponse.groupId());
             return createSecurityGroupResponse.groupId();
-        }catch (Ec2Exception e) {
+        } catch (Ec2Exception e) {
             System.err.println(e.awsErrorDetails().errorMessage());
-
         }
     return "";
     }
