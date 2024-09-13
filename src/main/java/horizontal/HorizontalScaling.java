@@ -151,7 +151,7 @@ public final class HorizontalScaling {
         // TODO: Create first Web Service instance and obtain DNS
         // TODO: Tag instance using Tag Specification
         String webServiceDNS = createInstance(ec2, wsSecurityGroupId, WEB_SERVICE);
-
+        System.out.printf("DNS name of both instances %s and %s are",loadGeneratorDNS, webServiceDNS );
         //Initialize test
         String response = initializeTest(loadGeneratorDNS, webServiceDNS);
 
@@ -317,7 +317,7 @@ public final class HorizontalScaling {
                 logger.info(response);
                 launchWebServiceSuccess = true;
             } catch (Exception e) {
-                logger.info("*");
+                logger.info("Error in test initialisation *");
             }
         }
         return response;
