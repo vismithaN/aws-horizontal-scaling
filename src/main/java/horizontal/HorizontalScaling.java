@@ -142,6 +142,7 @@ public final class HorizontalScaling {
         String wsSecurityGroupId =
                 getOrCreateHttpSecurityGroup(ec2, WEB_SERVICE_SECURITY_GROUP, vpc.vpcId());
 
+        System.out.printf("GroupIDs obtained from both %s and %s are",lgSecurityGroupId, wsSecurityGroupId );
         // TODO: Create Load Generator instance and obtain DNS
         // TODO: Tag instance using Tag Specification
 
@@ -499,7 +500,7 @@ public final class HorizontalScaling {
                 System.err.println(e.awsErrorDetails().errorMessage());
             }
             return "";
-        }else return groupId;
+        } else return groupId;
     }
 
 
