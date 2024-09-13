@@ -202,18 +202,16 @@ public final class HorizontalScaling {
                 .build();
         RunInstancesResponse response = ec2.runInstances(request);
         String instanceId = response.instances().get(0).instanceId();
-        String publicDnsName = response.instances().get(0).publicDnsName();
-
         System.out.printf("Created Instance with ID: %s", instanceId);
-        System.out.printf("Created Instance with publicDncName1: %s", publicDnsName);
+
 
         // Wait for the instance to be in a running state
         waiter(ec2, instanceId);
-        System.out.printf("Created Instance with publicDncName2: %s", publicDnsName);
         //Tag Network Interfaces
         tagNetworkInterfaceId(ec2, instanceId);
-        System.out.printf("Created Instance with publicDncName3: %s", publicDnsName);
-        return publicDnsName;
+        Instance instance = getInstance(ec2, instanceId);
+        System.out.printf("Created Instance with publicDncName3: %s", instance.publicDnsName());
+        return instance.publicDnsName();
     }
 
     //Wait until instance is running
@@ -516,8 +514,26 @@ public final class HorizontalScaling {
      */
     public static Instance getInstance(final Ec2Client ec2,
                                        final String instanceId) {
-        //TODO: Remove the exception
-        //TODO: Get an Ec2 instance
-        throw new UnsupportedOperationException();
+        try {
+
+            DescribeInstancesRequest request = DescribeInstancesRequest.builder()
+                    .instanceIds(instanceId)
+                    .build();
+            DescribeInstancesResponse response = ec2.describeInstances(request);
+
+
+            if (!response.reservations().isEmpty() && !response.reservations().get(0).instances().isEmpty()) {
+                Instance instance = response.reservations().get(0).instances().get(0);
+                System.out.printf("Instance found with ID: %s, State: %s%n", instance.instanceId(), instance.state().name());
+                return instance; // Return the found instance
+            } else {
+                System.out.printf("No instance found with ID: %s%n", instanceId);
+                return null; // No instance found with the given ID
+            }
+        } catch (Ec2Exception e) {
+            System.err.println("Error while describing instances: " + e.awsErrorDetails().errorMessage());
+        }
+
+        return null;
     }
 }
