@@ -402,44 +402,45 @@ public final class HorizontalScaling {
                                                       final String securityGroupName,
                                                       final String vpcId) {
 
+        try {
+            // Check if the Security group already exists, if already exists then return the groupID
+            DescribeSecurityGroupsRequest request = DescribeSecurityGroupsRequest.builder()
+                    .groupNames(securityGroupName).build();
+            DescribeSecurityGroupsResponse response = ec2.describeSecurityGroups(request);
+            List<String> groupIds = response.securityGroups().stream().map(SecurityGroup::groupId).collect(Collectors.toList());
+            if (!groupIds.isEmpty()) {
+                System.out.printf("Security group %s already exists with ID: %s", securityGroupName, groupIds.get(0));
+                return groupIds.get(0);
+            }
+         }catch(Ec2Exception ex) {
+            //Create new Security group
+            CreateSecurityGroupRequest createSecurityGroupRequest = CreateSecurityGroupRequest.builder()
+                    .groupName(securityGroupName)
+                    .description("Load Generator Security group")
+                    .vpcId(vpcId)
+                    .tagSpecifications(TagSpecification.builder()
+                            .resourceType(SECURITY_GROUP)
+                            .tags(Tag.builder().key(TAG_KEY).value(TAG_VALUE).build())
+                            .build())
+                    .build();
+            CreateSecurityGroupResponse createSecurityGroupResponse = ec2.createSecurityGroup(createSecurityGroupRequest);
 
-        // Check if the Security group already exists, if already exists then return the groupID
-        DescribeSecurityGroupsRequest request = DescribeSecurityGroupsRequest.builder()
-                .groupNames(securityGroupName).build();
-        DescribeSecurityGroupsResponse response =  ec2.describeSecurityGroups(request);
-        List<String> groupIds =  response.securityGroups().stream().map(SecurityGroup::groupId).collect(Collectors.toList());
-        if (!groupIds.isEmpty()) {
-            System.out.printf("Security group %s already exists with ID: %s", securityGroupName, groupIds.get(0));
-            return groupIds.get(0);
+            //Allow HTTP inbound traffic for the security group
+            IpPermission ipPermission = IpPermission.builder()
+                    .fromPort(HTTP_PORT)
+                    .toPort(HTTP_PORT)
+                    .ipProtocol("tcp")
+                    .ipRanges(IpRange.builder().cidrIp("0.0.0.0/0").build())
+                    .build();
+
+            AuthorizeSecurityGroupIngressRequest ingressRequest = AuthorizeSecurityGroupIngressRequest.builder()
+                    .groupId(createSecurityGroupResponse.groupId())
+                    .ipPermissions(ipPermission).build();
+            ec2.authorizeSecurityGroupIngress(ingressRequest);
+            System.out.printf("Successfully created security group: %s", securityGroupName);
+            return createSecurityGroupResponse.groupId();
         }
-
-        //Create new Security group
-        CreateSecurityGroupRequest createSecurityGroupRequest = CreateSecurityGroupRequest.builder()
-                .groupName(securityGroupName)
-                .description("Load Generator Security group")
-                .vpcId(vpcId)
-                .tagSpecifications(TagSpecification.builder()
-                        .resourceType(SECURITY_GROUP)
-                        .tags(Tag.builder().key(TAG_KEY).value(TAG_VALUE).build())
-                        .build())
-                .build();
-        CreateSecurityGroupResponse createSecurityGroupResponse = ec2.createSecurityGroup(createSecurityGroupRequest);
-
-        //Allow HTTP inbound traffic for the security group
-        IpPermission ipPermission = IpPermission.builder()
-                .fromPort(HTTP_PORT)
-                .toPort(HTTP_PORT)
-                .ipProtocol("tcp")
-                .ipRanges(IpRange.builder().cidrIp("0.0.0.0/0").build())
-                .build();
-
-        AuthorizeSecurityGroupIngressRequest ingressRequest = AuthorizeSecurityGroupIngressRequest.builder()
-                .groupId(createSecurityGroupResponse.groupId())
-                .ipPermissions(ipPermission).build();
-        ec2.authorizeSecurityGroupIngress(ingressRequest);
-        System.out.printf("Successfully created security group: %s", securityGroupName);
-        return createSecurityGroupResponse.groupId();
-
+        return null;
     }
 
 
