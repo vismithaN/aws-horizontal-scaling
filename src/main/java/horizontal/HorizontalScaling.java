@@ -404,15 +404,25 @@ public final class HorizontalScaling {
 
         try {
             // Check if the Security group already exists, if already exists then return the groupID
-            DescribeSecurityGroupsRequest request = DescribeSecurityGroupsRequest.builder()
-                    .groupNames(securityGroupName).build();
+            DescribeSecurityGroupsRequest request = DescribeSecurityGroupsRequest.builder().filters(
+                            software.amazon.awssdk.services.ec2.model.Filter.builder()
+                                    .name("group-name")
+                                    .values(securityGroupName)
+                                    .build(),
+                            software.amazon.awssdk.services.ec2.model.Filter.builder()
+                                    .name("vpc-id")
+                                    .values(vpcId)
+                                    .build()
+                    )
+                    .build();
+
             DescribeSecurityGroupsResponse response = ec2.describeSecurityGroups(request);
             List<String> groupIds = response.securityGroups().stream().map(SecurityGroup::groupId).collect(Collectors.toList());
             if (!groupIds.isEmpty()) {
                 System.out.printf("Security group %s already exists with ID: %s", securityGroupName, groupIds.get(0));
                 return groupIds.get(0);
             }
-         }catch(Ec2Exception ex) {
+         } catch(Ec2Exception ex) {
             //Create new Security group
             CreateSecurityGroupRequest createSecurityGroupRequest = CreateSecurityGroupRequest.builder()
                     .groupName(securityGroupName)
