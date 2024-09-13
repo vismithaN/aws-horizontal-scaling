@@ -398,6 +398,46 @@ public final class HorizontalScaling {
      * @param vpcId             the ID of the VPC
      * @return ID of security group
      */
+    public static String checkSecurityGroupExists(final Ec2Client ec2, final String securityGroupName, final String vpcId) {
+        try {
+            // Create a request to describe security groups with filters for group name and VPC ID
+            DescribeSecurityGroupsRequest request = DescribeSecurityGroupsRequest.builder()
+                    .filters(
+                            Filter.builder()
+                                    .name("group-name")
+                                    .values(securityGroupName)
+                                    .build(),
+                            Filter.builder()
+                                    .name("vpc-id")
+                                    .values(vpcId)
+                                    .build()
+                    )
+                    .build();
+
+            // Fetch the response from the EC2 client
+            DescribeSecurityGroupsResponse response = ec2.describeSecurityGroups(request);
+
+            // Extract security group IDs that match the criteria
+            List<String> groupIds = response.securityGroups().stream()
+                    .map(SecurityGroup::groupId)
+                    .collect(Collectors.toList());
+
+            // If a matching security group is found, return its ID
+            if (!groupIds.isEmpty()) {
+                System.out.printf("Security group %s already exists with ID: %s%n", securityGroupName, groupIds.get(0));
+                return groupIds.get(0);
+            } else {
+                System.out.printf("Security group %s does not exist in VPC %s.%n", securityGroupName, vpcId);
+            }
+
+        } catch (Ec2Exception ex) {
+            System.err.println("Error while describing security groups: " + ex.awsErrorDetails().errorMessage());
+        }
+
+        // Return null if the security group does not exist or an error occurred
+        return null;
+    }
+
     public static String getOrCreateHttpSecurityGroup(final Ec2Client ec2,
                                                       final String securityGroupName,
                                                       final String vpcId) {
@@ -425,38 +465,41 @@ public final class HorizontalScaling {
 //         } catch(Ec2Exception ex) {
 //            System.err.println("Error while describing security groups: " + ex.awsErrorDetails().errorMessage());
 //        }
+        String groupId = checkSecurityGroupExists(ec2, securityGroupName, vpcId);
+        if (groupId == null) {
+            try {    //Create new Security group
+                CreateSecurityGroupRequest createSecurityGroupRequest = CreateSecurityGroupRequest.builder()
+                        .groupName(securityGroupName)
+                        .description("Load Generator Security group")
+                        .vpcId(vpcId)
+                        .tagSpecifications(TagSpecification.builder()
+                                .resourceType(SECURITY_GROUP)
+                                .tags(Tag.builder().key(TAG_KEY).value(TAG_VALUE).build())
+                                .build())
+                        .build();
+                CreateSecurityGroupResponse createSecurityGroupResponse = ec2.createSecurityGroup(createSecurityGroupRequest);
 
-        try {    //Create new Security group
-            CreateSecurityGroupRequest createSecurityGroupRequest = CreateSecurityGroupRequest.builder()
-                    .groupName(securityGroupName)
-                    .description("Load Generator Security group")
-                    .vpcId(vpcId)
-                    .tagSpecifications(TagSpecification.builder()
-                            .resourceType(SECURITY_GROUP)
-                            .tags(Tag.builder().key(TAG_KEY).value(TAG_VALUE).build())
-                            .build())
-                    .build();
-            CreateSecurityGroupResponse createSecurityGroupResponse = ec2.createSecurityGroup(createSecurityGroupRequest);
+                //Allow HTTP inbound traffic for the security group
+                IpPermission ipPermission = IpPermission.builder()
+                        .fromPort(HTTP_PORT)
+                        .toPort(HTTP_PORT)
+                        .ipProtocol("tcp")
+                        .ipRanges(IpRange.builder().cidrIp("0.0.0.0/0").build())
+                        .build();
 
-            //Allow HTTP inbound traffic for the security group
-            IpPermission ipPermission = IpPermission.builder()
-                    .fromPort(HTTP_PORT)
-                    .toPort(HTTP_PORT)
-                    .ipProtocol("tcp")
-                    .ipRanges(IpRange.builder().cidrIp("0.0.0.0/0").build())
-                    .build();
-
-            AuthorizeSecurityGroupIngressRequest ingressRequest = AuthorizeSecurityGroupIngressRequest.builder()
-                    .groupId(createSecurityGroupResponse.groupId())
-                    .ipPermissions(ipPermission).build();
-            ec2.authorizeSecurityGroupIngress(ingressRequest);
-            System.out.printf("Successfully created security group: %s%n", securityGroupName);
-            System.out.printf("Successfully created security group: %s%n", createSecurityGroupResponse.groupId());
-            return createSecurityGroupResponse.groupId();
-        } catch (Ec2Exception e) {
-            System.err.println(e.awsErrorDetails().errorMessage());
-        }
-    return "";
+                AuthorizeSecurityGroupIngressRequest ingressRequest = AuthorizeSecurityGroupIngressRequest.builder()
+                        .groupId(createSecurityGroupResponse.groupId())
+                        .ipPermissions(ipPermission).build();
+                ec2.authorizeSecurityGroupIngress(ingressRequest);
+                System.out.printf("Successfully created security group: %s%n", securityGroupName);
+                System.out.printf("Successfully created security group: %s%n", createSecurityGroupResponse.groupId());
+                return createSecurityGroupResponse.groupId();
+            } catch (Ec2Exception e) {
+                System.out.printf("Error creating security group");
+                System.err.println(e.awsErrorDetails().errorMessage());
+            }
+            return "";
+        }else return groupId;
     }
 
 
