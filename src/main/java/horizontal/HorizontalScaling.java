@@ -423,7 +423,10 @@ public final class HorizontalScaling {
                 return groupIds.get(0);
             }
          } catch(Ec2Exception ex) {
-            //Create new Security group
+            System.err.println("Error while describing security groups: " + e.awsErrorDetails().errorMessage());
+        }
+
+        try {    //Create new Security group
             CreateSecurityGroupRequest createSecurityGroupRequest = CreateSecurityGroupRequest.builder()
                     .groupName(securityGroupName)
                     .description("Load Generator Security group")
@@ -449,8 +452,11 @@ public final class HorizontalScaling {
             ec2.authorizeSecurityGroupIngress(ingressRequest);
             System.out.printf("Successfully created security group: %s", securityGroupName);
             return createSecurityGroupResponse.groupId();
+        }catch (Ec2Exception e) {
+            System.err.println(e.awsErrorDetails().errorMessage());
+
         }
-        return null;
+    return "";
     }
 
 
