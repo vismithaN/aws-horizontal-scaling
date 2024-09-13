@@ -194,7 +194,7 @@ public final class HorizontalScaling {
                 .instanceType(INSTANCE_TYPE)
                 .minCount(1)
                 .maxCount(1)
-                .securityGroups(Collections.singletonList(securityGroupId))
+                .securityGroupIds(Collections.singletonList(securityGroupId))
                 .tagSpecifications(TagSpecification.builder()
                         .resourceType(ResourceType.INSTANCE)
                         .tags(Tag.builder().key(TAG_KEY).value(TAG_VALUE).build()) // Tagging the instance
