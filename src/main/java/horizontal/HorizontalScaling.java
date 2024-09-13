@@ -135,7 +135,7 @@ public final class HorizontalScaling {
 
         // Get the default VPC
         Vpc vpc = getDefaultVPC(ec2);
-
+        System.out.printf("Default VPC returned : %s", vpc.vpcId());
         // Create Security Groups in the default VPC
         String lgSecurityGroupId =
                 getOrCreateHttpSecurityGroup(ec2, LG_SECURITY_GROUP, vpc.vpcId());
