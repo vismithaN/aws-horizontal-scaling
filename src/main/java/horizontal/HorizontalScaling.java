@@ -205,12 +205,14 @@ public final class HorizontalScaling {
         String publicDnsName = response.instances().get(0).publicDnsName();
 
         System.out.printf("Created Instance with ID: %s", instanceId);
+        System.out.printf("Created Instance with publicDncName1: %s", publicDnsName);
 
         // Wait for the instance to be in a running state
         waiter(ec2, instanceId);
-
+        System.out.printf("Created Instance with publicDncName2: %s", publicDnsName);
         //Tag Network Interfaces
         tagNetworkInterfaceId(ec2, instanceId);
+        System.out.printf("Created Instance with publicDncName3: %s", publicDnsName);
         return publicDnsName;
     }
 
