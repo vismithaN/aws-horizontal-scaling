@@ -423,7 +423,7 @@ public final class HorizontalScaling {
                 return groupIds.get(0);
             }
          } catch(Ec2Exception ex) {
-            System.err.println("Error while describing security groups: " + e.awsErrorDetails().errorMessage());
+            System.err.println("Error while describing security groups: " + ex.awsErrorDetails().errorMessage());
         }
 
         try {    //Create new Security group
