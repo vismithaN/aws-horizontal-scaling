@@ -157,14 +157,15 @@ public final class HorizontalScaling {
 
         //Get TestID
         String testId = getTestId(response);
-
+        System.out.printf("Get test ID %s\n",testId);
         //Save launch time
         Date lastLaunchTime = new Date();
-
+        System.out.printf("Current Launch time %s\n",lastLaunchTime);
         //Monitor LOG file
         Ini ini = getIniUpdate(loadGeneratorDNS, testId);
         while (ini == null || !ini.containsKey("Test finished")) {
             Thread.sleep(RETRY_DELAY_MILLIS);
+            System.out.printf("Inside monitor log file");
             ini = getIniUpdate(loadGeneratorDNS, testId);
             float currentRPS = getRPS(ini);
             boolean timeForLaunch = lastLaunchTime.toInstant().plusSeconds(LAUNCH_DELAY).isBefore(Instant.now());
@@ -172,7 +173,7 @@ public final class HorizontalScaling {
             if(timeForLaunch && currentRPS<50){
                 String newWebDNS =  createInstance(ec2, wsSecurityGroupId, WEB_SERVICE);
                 addWebServiceInstance(loadGeneratorDNS,newWebDNS,testId);
-                lastLaunchTime = new Date();
+                lastLaunchTime =  new Date();
             }
 
             // TODO: Check last launch time and RPS
@@ -314,7 +315,7 @@ public final class HorizontalScaling {
                         "http://%s/test/horizontal?dns=%s",
                         loadGeneratorDNS,
                         webServiceDNS));
-                logger.info("Response after initialing the test {}", response);
+                logger.info("Response after initialing the test {}\n", response);
                 launchWebServiceSuccess = true;
             } catch (Exception e) {
                 logger.info("Error in test initialisation *");
