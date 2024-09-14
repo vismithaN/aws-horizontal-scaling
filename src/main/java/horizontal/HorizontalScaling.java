@@ -132,56 +132,58 @@ public final class HorizontalScaling {
                 .region(Region.US_EAST_1)
                 .credentialsProvider(credentialsProvider)
                 .build();
-
+        try {
         // Get the default VPC
-        Vpc vpc = getDefaultVPC(ec2);
-        System.out.printf("Default VPC returned : %s", vpc.vpcId());
-        // Create Security Groups in the default VPC
-        String lgSecurityGroupId =
-                getOrCreateHttpSecurityGroup(ec2, LG_SECURITY_GROUP, vpc.vpcId());
-        String wsSecurityGroupId =
-                getOrCreateHttpSecurityGroup(ec2, WEB_SERVICE_SECURITY_GROUP, vpc.vpcId());
+            Vpc vpc = getDefaultVPC(ec2);
+            System.out.printf("Default VPC returned : %s", vpc.vpcId());
+            // Create Security Groups in the default VPC
+            String lgSecurityGroupId =
+                    getOrCreateHttpSecurityGroup(ec2, LG_SECURITY_GROUP, vpc.vpcId());
+            String wsSecurityGroupId =
+                    getOrCreateHttpSecurityGroup(ec2, WEB_SERVICE_SECURITY_GROUP, vpc.vpcId());
 
-        System.out.printf("GroupIDs obtained from both %s and %s are",lgSecurityGroupId, wsSecurityGroupId );
-        // TODO: Create Load Generator instance and obtain DNS
-        // TODO: Tag instance using Tag Specification
+            System.out.printf("GroupIDs obtained from both %s and %s are", lgSecurityGroupId, wsSecurityGroupId);
+            // TODO: Create Load Generator instance and obtain DNS
+            // TODO: Tag instance using Tag Specification
 
-        String loadGeneratorDNS = createInstance(ec2, lgSecurityGroupId, LOAD_GENERATOR);
+            String loadGeneratorDNS = createInstance(ec2, lgSecurityGroupId, LOAD_GENERATOR);
 
-        // TODO: Create first Web Service instance and obtain DNS
-        // TODO: Tag instance using Tag Specification
-        String webServiceDNS = createInstance(ec2, wsSecurityGroupId, WEB_SERVICE);
-        System.out.printf("DNS name of both instances %s and %s are",loadGeneratorDNS, webServiceDNS );
-        //Initialize test
-        String response = initializeTest(loadGeneratorDNS, webServiceDNS);
+            // TODO: Create first Web Service instance and obtain DNS
+            // TODO: Tag instance using Tag Specification
+            String webServiceDNS = createInstance(ec2, wsSecurityGroupId, WEB_SERVICE);
+            System.out.printf("DNS name of both instances %s and %s are", loadGeneratorDNS, webServiceDNS);
+            //Initialize test
+            String response = initializeTest(loadGeneratorDNS, webServiceDNS);
 
-        //Get TestID
-        String testId = getTestId(response);
-        System.out.printf("Get test ID %s\n",testId);
-        //Save launch time
-        Date lastLaunchTime = new Date();
-        System.out.printf("Current Launch time %s\n",lastLaunchTime);
-        //Monitor LOG file
-        Ini ini = getIniUpdate(loadGeneratorDNS, testId);
-        while (ini == null || !ini.containsKey("Test finished")) {
-            Thread.sleep(RETRY_DELAY_MILLIS);
+            //Get TestID
+            String testId = getTestId(response);
+            System.out.printf("Get test ID %s\n", testId);
+            //Save launch time
+            Date lastLaunchTime = new Date();
+            System.out.printf("Current Launch time %s\n", lastLaunchTime);
+            //Monitor LOG file
+            Ini ini = getIniUpdate(loadGeneratorDNS, testId);
+            while (ini == null || !ini.containsKey("Test finished")) {
+                Thread.sleep(RETRY_DELAY_MILLIS);
 
-            ini = getIniUpdate(loadGeneratorDNS, testId);
-            float currentRPS = getRPS(ini);
-            System.out.printf("Inside monitor log file. Current RPS %s\n",currentRPS);
-            boolean timeForLaunch = lastLaunchTime.toInstant().plusSeconds(LAUNCH_DELAY).isBefore(Instant.now());
+                ini = getIniUpdate(loadGeneratorDNS, testId);
+                float currentRPS = getRPS(ini);
+                System.out.printf("Inside monitor log file. Current RPS %s\n", currentRPS);
+                boolean timeForLaunch = lastLaunchTime.toInstant().plusSeconds(LAUNCH_DELAY).isBefore(Instant.now());
 
-            if(timeForLaunch && currentRPS<50){
-                String newWebDNS =  createInstance(ec2, wsSecurityGroupId, WEB_SERVICE);
-                addWebServiceInstance(loadGeneratorDNS,newWebDNS,testId);
-                System.out.printf("Launching new instance %s\n",newWebDNS);
-                lastLaunchTime =  new Date();
+                if (timeForLaunch && currentRPS < 50) {
+                    String newWebDNS = createInstance(ec2, wsSecurityGroupId, WEB_SERVICE);
+                    addWebServiceInstance(loadGeneratorDNS, newWebDNS, testId);
+                    System.out.printf("Launching new instance %s\n", newWebDNS);
+                    lastLaunchTime = new Date();
+                }
+
+                // TODO: Check last launch time and RPS
+                // TODO: Add New Web Service Instance if Required
             }
-
-            // TODO: Check last launch time and RPS
-            // TODO: Add New Web Service Instance if Required
+        } finally {
+            ec2.close();
         }
-
     }
 
     /**
