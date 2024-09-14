@@ -3,6 +3,7 @@ package horizontal;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
@@ -159,7 +160,7 @@ public final class HorizontalScaling {
             String testId = getTestId(response);
             System.out.printf("Get test ID %s\n", testId);
             //Save launch time
-            Date lastLaunchTime = new Date();
+            Instant lastLaunchTime = Instant.now();
             System.out.printf("Current Launch time %s\n", lastLaunchTime);
             //Monitor LOG file
             Ini ini = getIniUpdate(loadGeneratorDNS, testId);
@@ -169,13 +170,15 @@ public final class HorizontalScaling {
                 ini = getIniUpdate(loadGeneratorDNS, testId);
                 float currentRPS = getRPS(ini);
                 System.out.printf("Inside monitor log file. Current RPS %s\n", currentRPS);
-                boolean timeForLaunch = lastLaunchTime.toInstant().plusSeconds(LAUNCH_DELAY).isBefore(Instant.now());
-
+                boolean timeForLaunch = Duration.between(lastLaunchTime, Instant.now()).getSeconds()>100;
+                System.out.printf("Is it time to launch? %s %s", timeForLaunch, Duration.between(lastLaunchTime, Instant.now()).getSeconds());
+                //Launcher
                 if (timeForLaunch && currentRPS < 50) {
+                    System.out.printf("Starting new launcher\n");
                     String newWebDNS = createInstance(ec2, wsSecurityGroupId, WEB_SERVICE);
                     addWebServiceInstance(loadGeneratorDNS, newWebDNS, testId);
                     System.out.printf("Launching new instance %s\n", newWebDNS);
-                    lastLaunchTime = new Date();
+                    lastLaunchTime = Instant.now();
                 }
 
                 // TODO: Check last launch time and RPS
@@ -185,6 +188,8 @@ public final class HorizontalScaling {
             ec2.close();
         }
     }
+
+
 
     /**
      *
