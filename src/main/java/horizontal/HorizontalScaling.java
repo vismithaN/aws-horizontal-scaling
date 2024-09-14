@@ -3,23 +3,32 @@ package horizontal;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
 import org.ini4j.Ini;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import software.amazon.awssdk.services.ec2.model.*;
+import software.amazon.awssdk.services.ec2.waiters.Ec2Waiter;
 import utilities.Configuration;
 import utilities.HttpRequest;
 
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.services.ec2.Ec2Client;
-import software.amazon.awssdk.services.ec2.model.Instance;
-import software.amazon.awssdk.services.ec2.model.Vpc;
 import software.amazon.awssdk.regions.Region;
+
+import static software.amazon.awssdk.services.ec2.model.ResourceType.SECURITY_GROUP;
+import static software.amazon.awssdk.services.ec2.model.ResourceType.VPC;
 
 
 /**
@@ -87,6 +96,8 @@ public final class HorizontalScaling {
      */
     public static final int RETRY_DELAY_MILLIS = 100;
 
+    public static final String TAG_KEY = "project";
+    public static final String TAG_VALUE = "vm-scaling";
     /**
      * Logger.
      */
@@ -122,44 +133,129 @@ public final class HorizontalScaling {
                 .region(Region.US_EAST_1)
                 .credentialsProvider(credentialsProvider)
                 .build();
-
+        try {
         // Get the default VPC
-        Vpc vpc = getDefaultVPC(ec2);
+            Vpc vpc = getDefaultVPC(ec2);
+            System.out.printf("Default VPC returned : %s", vpc.vpcId());
+            // Create Security Groups in the default VPC
+            String lgSecurityGroupId =
+                    getOrCreateHttpSecurityGroup(ec2, LG_SECURITY_GROUP, vpc.vpcId());
+            String wsSecurityGroupId =
+                    getOrCreateHttpSecurityGroup(ec2, WEB_SERVICE_SECURITY_GROUP, vpc.vpcId());
 
-        // Create Security Groups in the default VPC
-        String lgSecurityGroupId =
-                getOrCreateHttpSecurityGroup(ec2, LG_SECURITY_GROUP, vpc.vpcId());
-        String wsSecurityGroupId =
-                getOrCreateHttpSecurityGroup(ec2, WEB_SERVICE_SECURITY_GROUP, vpc.vpcId());
+            System.out.printf("GroupIDs obtained from both %s and %s are", lgSecurityGroupId, wsSecurityGroupId);
+            // TODO: Create Load Generator instance and obtain DNS
+            // TODO: Tag instance using Tag Specification
 
-        // TODO: Create Load Generator instance and obtain DNS
-        // TODO: Tag instance using Tag Specification
-        String loadGeneratorDNS = "";
+            String loadGeneratorDNS = createInstance(ec2, lgSecurityGroupId, LOAD_GENERATOR);
 
-        // TODO: Create first Web Service instance and obtain DNS
-        // TODO: Tag instance using Tag Specification
-        String webServiceDNS = "";
+            // TODO: Create first Web Service instance and obtain DNS
+            // TODO: Tag instance using Tag Specification
+            String webServiceDNS = createInstance(ec2, wsSecurityGroupId, WEB_SERVICE);
+            System.out.printf("DNS name of both instances %s and %s are", loadGeneratorDNS, webServiceDNS);
+            //Initialize test
+            String response = initializeTest(loadGeneratorDNS, webServiceDNS);
 
-        //Initialize test
-        String response = initializeTest(loadGeneratorDNS, webServiceDNS);
+            //Get TestID
+            String testId = getTestId(response);
+            System.out.printf("Get test ID %s\n", testId);
+            //Save launch time
+            Instant lastLaunchTime = Instant.now();
+            System.out.printf("Current Launch time %s\n", lastLaunchTime);
+            //Monitor LOG file
+            Ini ini = getIniUpdate(loadGeneratorDNS, testId);
+            while (ini == null || !ini.containsKey("Test finished")) {
+                Thread.sleep(RETRY_DELAY_MILLIS);
 
-        //Get TestID
-        String testId = getTestId(response);
+                ini = getIniUpdate(loadGeneratorDNS, testId);
+                float currentRPS = getRPS(ini);
+                System.out.printf("Inside monitor log file. Current RPS %s\n", currentRPS);
+                boolean timeForLaunch = Duration.between(lastLaunchTime, Instant.now()).getSeconds()>100;
+                System.out.printf("Is it time to launch? %s %s", timeForLaunch, Duration.between(lastLaunchTime, Instant.now()).getSeconds());
+                //Launcher
+                if (timeForLaunch && currentRPS < 50) {
+                    System.out.printf("Starting new launcher\n");
+                    String newWebDNS = createInstance(ec2, wsSecurityGroupId, WEB_SERVICE);
+                    addWebServiceInstance(loadGeneratorDNS, newWebDNS, testId);
+                    System.out.printf("Launching new instance %s\n", newWebDNS);
+                    lastLaunchTime = Instant.now();
+                }
 
-        //Save launch time
-        Date lastLaunchTime = new Date();
-
-        //Monitor LOG file
-        Ini ini = getIniUpdate(loadGeneratorDNS, testId);
-        while (ini == null || !ini.containsKey("Test finished")) {
-            ini = getIniUpdate(loadGeneratorDNS, testId);
-
-            // TODO: Check last launch time and RPS
-            // TODO: Add New Web Service Instance if Required
+                // TODO: Check last launch time and RPS
+                // TODO: Add New Web Service Instance if Required
+            }
+        } finally {
+            ec2.close();
         }
-
     }
 
+
+
+    /**
+     *
+     * @param ec2
+     * @param securityGroupId
+     * @param amiId
+     * @return DNS
+     */
+    private static String createInstance(Ec2Client ec2, String securityGroupId, String amiId) {
+        RunInstancesRequest request = RunInstancesRequest.builder()
+                .imageId(amiId)
+                .instanceType(INSTANCE_TYPE)
+                .minCount(1)
+                .maxCount(1)
+                .securityGroupIds(Collections.singletonList(securityGroupId))
+                .tagSpecifications(TagSpecification.builder()
+                        .resourceType(ResourceType.INSTANCE)
+                        .tags(Tag.builder().key(TAG_KEY).value(TAG_VALUE).build()) // Tagging the instance
+                        .build())
+                .build();
+        RunInstancesResponse response = ec2.runInstances(request);
+        String instanceId = response.instances().get(0).instanceId();
+        System.out.printf("Created Instance with ID: %s", instanceId);
+
+
+        // Wait for the instance to be in a running state
+        waiter(ec2, instanceId);
+        //Tag Network Interfaces
+        tagNetworkInterfaceId(ec2, instanceId);
+        Instance instance = getInstance(ec2, instanceId);
+        System.out.printf("Created Instance with publicDncName: %s", instance.publicDnsName());
+        return instance.publicDnsName();
+    }
+
+    //Wait until instance is running
+    private static void waiter(Ec2Client ec2, String instanceId) {
+        Ec2Waiter waiter = ec2.waiter();
+
+        DescribeInstancesRequest request = DescribeInstancesRequest.builder()
+                .instanceIds(instanceId)
+                .build();
+
+        // Wait until the instance is running
+        waiter.waitUntilInstanceRunning(request).matched().response().ifPresent(System.out::println);
+        System.out.printf("Instance %s is now running.%n", instanceId);
+    }
+
+    // Get the network interface ID associated with an instance
+    public static void tagNetworkInterfaceId(Ec2Client ec2, String instanceId) {
+
+        DescribeInstancesRequest request = DescribeInstancesRequest.builder()
+                .instanceIds(instanceId)
+                .build();
+
+        DescribeInstancesResponse response = ec2.describeInstances(request);
+        Instance instance = response.reservations().get(0).instances().get(0);
+
+
+        InstanceNetworkInterface networkInterface = instance.networkInterfaces().get(0);
+        CreateTagsRequest createTagsRequest = CreateTagsRequest.builder()
+                .resources(networkInterface.networkInterfaceId())
+                .tags(Tag.builder().key(TAG_KEY).value(TAG_VALUE).build()).build();
+
+        ec2.createTags(createTagsRequest);
+        System.out.printf("Tagged Network Interface with ID: %s", networkInterface.networkInterfaceId());
+    }
     /**
      * Get the latest RPS.
      *
@@ -228,10 +324,10 @@ public final class HorizontalScaling {
                         "http://%s/test/horizontal?dns=%s",
                         loadGeneratorDNS,
                         webServiceDNS));
-                logger.info(response);
+                logger.info("Response after initialing the test {}\n", response);
                 launchWebServiceSuccess = true;
             } catch (Exception e) {
-                logger.info("*");
+                logger.info("Error in test initialisation *");
             }
         }
         return response;
@@ -293,7 +389,16 @@ public final class HorizontalScaling {
     public static Vpc getDefaultVPC(final Ec2Client ec2) {
         //TODO: Remove the exception
         //TODO: Get the default VPC
-        throw new UnsupportedOperationException();
+
+        DescribeVpcsRequest describeVpcsRequest = DescribeVpcsRequest.builder().build();
+        DescribeVpcsResponse response = ec2.describeVpcs(describeVpcsRequest);
+        List<Vpc> vpcList = response.vpcs();
+        for(Vpc vpc : vpcList) {
+            if(vpc.isDefault())
+                return vpc;
+        }
+        return null;
+
     }
 
     /**
@@ -304,14 +409,111 @@ public final class HorizontalScaling {
      * @param vpcId             the ID of the VPC
      * @return ID of security group
      */
+    public static String checkSecurityGroupExists(final Ec2Client ec2, final String securityGroupName, final String vpcId) {
+        try {
+            // Create a request to describe security groups with filters for group name and VPC ID
+            DescribeSecurityGroupsRequest request = DescribeSecurityGroupsRequest.builder()
+                    .filters(
+                            Filter.builder()
+                                    .name("group-name")
+                                    .values(securityGroupName)
+                                    .build(),
+                            Filter.builder()
+                                    .name("vpc-id")
+                                    .values(vpcId)
+                                    .build()
+                    )
+                    .build();
+
+            // Fetch the response from the EC2 client
+            DescribeSecurityGroupsResponse response = ec2.describeSecurityGroups(request);
+
+            // Extract security group IDs that match the criteria
+            List<String> groupIds = response.securityGroups().stream()
+                    .map(SecurityGroup::groupId)
+                    .collect(Collectors.toList());
+
+            // If a matching security group is found, return its ID
+            if (!groupIds.isEmpty()) {
+                System.out.printf("Security group %s already exists with ID: %s%n", securityGroupName, groupIds.get(0));
+                return groupIds.get(0);
+            } else {
+                System.out.printf("Security group %s does not exist in VPC %s.%n", securityGroupName, vpcId);
+            }
+
+        } catch (Ec2Exception ex) {
+            System.err.println("Error while describing security groups: " + ex.awsErrorDetails().errorMessage());
+        }
+
+        // Return null if the security group does not exist or an error occurred
+        return null;
+    }
+
     public static String getOrCreateHttpSecurityGroup(final Ec2Client ec2,
                                                       final String securityGroupName,
                                                       final String vpcId) {
-        //TODO: Remove the exception
-        //TODO: Get or create Security Group
-        //TODO: Allow all HTTP inbound traffic for the security group
-        throw new UnsupportedOperationException();
+//
+//        try {
+//            // Check if the Security group already exists, if already exists then return the groupID
+//            DescribeSecurityGroupsRequest request = DescribeSecurityGroupsRequest.builder().filters(
+//                            software.amazon.awssdk.services.ec2.model.Filter.builder()
+//                                    .name("group-name")
+//                                    .values(securityGroupName)
+//                                    .build(),
+//                            software.amazon.awssdk.services.ec2.model.Filter.builder()
+//                                    .name("vpc-id")
+//                                    .values(vpcId)
+//                                    .build()
+//                    )
+//                    .build();
+//
+//            DescribeSecurityGroupsResponse response = ec2.describeSecurityGroups(request);
+//            List<String> groupIds = response.securityGroups().stream().map(SecurityGroup::groupId).collect(Collectors.toList());
+//            if (!groupIds.isEmpty()) {
+//                System.out.printf("Security group %s already exists with ID: %s", securityGroupName, groupIds.get(0));
+//                return groupIds.get(0);
+//            }
+//         } catch(Ec2Exception ex) {
+//            System.err.println("Error while describing security groups: " + ex.awsErrorDetails().errorMessage());
+//        }
+        String groupId = checkSecurityGroupExists(ec2, securityGroupName, vpcId);
+        if (groupId == null) {
+            try {    //Create new Security group
+                CreateSecurityGroupRequest createSecurityGroupRequest = CreateSecurityGroupRequest.builder()
+                        .groupName(securityGroupName)
+                        .description("Load Generator Security group")
+                        .vpcId(vpcId)
+                        .tagSpecifications(TagSpecification.builder()
+                                .resourceType(SECURITY_GROUP)
+                                .tags(Tag.builder().key(TAG_KEY).value(TAG_VALUE).build())
+                                .build())
+                        .build();
+                CreateSecurityGroupResponse createSecurityGroupResponse = ec2.createSecurityGroup(createSecurityGroupRequest);
+
+                //Allow HTTP inbound traffic for the security group
+                IpPermission ipPermission = IpPermission.builder()
+                        .fromPort(HTTP_PORT)
+                        .toPort(HTTP_PORT)
+                        .ipProtocol("tcp")
+                        .ipRanges(IpRange.builder().cidrIp("0.0.0.0/0").build())
+                        .build();
+
+                AuthorizeSecurityGroupIngressRequest ingressRequest = AuthorizeSecurityGroupIngressRequest.builder()
+                        .groupId(createSecurityGroupResponse.groupId())
+                        .ipPermissions(ipPermission).build();
+                ec2.authorizeSecurityGroupIngress(ingressRequest);
+                System.out.printf("Successfully created security group: %s%n", securityGroupName);
+                System.out.printf("Successfully created security group: %s%n", createSecurityGroupResponse.groupId());
+                return createSecurityGroupResponse.groupId();
+            } catch (Ec2Exception e) {
+                System.out.printf("Error creating security group");
+                System.err.println(e.awsErrorDetails().errorMessage());
+            }
+            return "";
+        } else return groupId;
     }
+
+
 
     /**
      * Get instance object by ID.
@@ -322,8 +524,26 @@ public final class HorizontalScaling {
      */
     public static Instance getInstance(final Ec2Client ec2,
                                        final String instanceId) {
-        //TODO: Remove the exception
-        //TODO: Get an Ec2 instance
-        throw new UnsupportedOperationException();
+        try {
+
+            DescribeInstancesRequest request = DescribeInstancesRequest.builder()
+                    .instanceIds(instanceId)
+                    .build();
+            DescribeInstancesResponse response = ec2.describeInstances(request);
+
+
+            if (!response.reservations().isEmpty() && !response.reservations().get(0).instances().isEmpty()) {
+                Instance instance = response.reservations().get(0).instances().get(0);
+                System.out.printf("Instance found with ID: %s, State: %s%n", instance.instanceId(), instance.state().name());
+                return instance; // Return the found instance
+            } else {
+                System.out.printf("No instance found with ID: %s%n", instanceId);
+                return null; // No instance found with the given ID
+            }
+        } catch (Ec2Exception e) {
+            System.err.println("Error while describing instances: " + e.awsErrorDetails().errorMessage());
+        }
+
+        return null;
     }
 }

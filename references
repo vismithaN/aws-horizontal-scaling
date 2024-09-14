@@ -2,17 +2,34 @@
     "referenceGuide" : "Cite all the reference sources in the required format. Proper citations will help you avoid unnecessary trouble. Read JSON grammar from Internet if needed.",
     "websites":[  
         {  
-            "title":"<title of the page>",
-            "url":"<url>",
-            "code":"<in which code you use the snippet or the idea>",
-            "description":"<additional information you find it necessary to provide>"
-        }
-    ],
-    "collaborators":[
+            "title":"Class DescribeVpcsRequest",
+            "url":"https://sdk.amazonaws.com/java/api/2.1.3/software/amazon/awssdk/services/ec2/model/DescribeVpcsRequest.html",
+            "code":"DescribeVpcsRequest describeVpcsRequest = DescribeVpcsRequest.builder().build();
+                            DescribeVpcsResponse response = ec2.describeVpcs(describeVpcsRequest);",
+        },
         {
-            "submissionUsername":"<collaborator submissionUsername>",
-            "collaborationType":"<I helped X, X helped me, or we helped each other>",
-            "description":"<describe the idea you shared>"
+                    "title":"Class DescribeVpcsResponse",
+                    "url":"https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/services/ec2/model/DescribeVpcsResponse.html",
+                    "code":"DescribeVpcsResponse response = ec2.describeVpcs(describeVpcsRequest);",
+        },
+        {
+            "title": "AWS SDK for Java v2: DescribeSecurityGroupsRequest",
+            "url": "https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/services/ec2/model/DescribeSecurityGroupsRequest.html",
+           "code": "DescribeSecurityGroupsRequest request = DescribeSecurityGroupsRequest.builder()
+                                        .filters(
+                                                Filter.builder()
+                                                        .name("group-name")
+                                                        .values(securityGroupName)
+                                                        .build(),
+                                                Filter.builder()
+                                                        .name("vpc-id")
+                                                        .values(vpcId)
+                                                        .build()
+                                        )
+                                        .build();"
         }
+
+
     ]
+
 }
