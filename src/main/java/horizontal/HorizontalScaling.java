@@ -165,14 +165,16 @@ public final class HorizontalScaling {
         Ini ini = getIniUpdate(loadGeneratorDNS, testId);
         while (ini == null || !ini.containsKey("Test finished")) {
             Thread.sleep(RETRY_DELAY_MILLIS);
-            System.out.printf("Inside monitor log file");
+
             ini = getIniUpdate(loadGeneratorDNS, testId);
             float currentRPS = getRPS(ini);
+            System.out.printf("Inside monitor log file. Current RPS %s\n",currentRPS);
             boolean timeForLaunch = lastLaunchTime.toInstant().plusSeconds(LAUNCH_DELAY).isBefore(Instant.now());
 
             if(timeForLaunch && currentRPS<50){
                 String newWebDNS =  createInstance(ec2, wsSecurityGroupId, WEB_SERVICE);
                 addWebServiceInstance(loadGeneratorDNS,newWebDNS,testId);
+                System.out.printf("Launching new instance %s\n",newWebDNS);
                 lastLaunchTime =  new Date();
             }
 
