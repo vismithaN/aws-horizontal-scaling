@@ -210,7 +210,7 @@ public final class HorizontalScaling {
         //Tag Network Interfaces
         tagNetworkInterfaceId(ec2, instanceId);
         Instance instance = getInstance(ec2, instanceId);
-        System.out.printf("Created Instance with publicDncName3: %s", instance.publicDnsName());
+        System.out.printf("Created Instance with publicDncName: %s", instance.publicDnsName());
         return instance.publicDnsName();
     }
 
@@ -314,7 +314,7 @@ public final class HorizontalScaling {
                         "http://%s/test/horizontal?dns=%s",
                         loadGeneratorDNS,
                         webServiceDNS));
-                logger.info(response);
+                logger.info("Response after initialing the test {}", response);
                 launchWebServiceSuccess = true;
             } catch (Exception e) {
                 logger.info("Error in test initialisation *");
