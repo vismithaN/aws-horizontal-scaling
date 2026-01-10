@@ -224,7 +224,7 @@ mvn clean install
 mvn exec:java -Dexec.mainClass="horizontal.HorizontalScaling"
 ```
 
-Or run the compiled JAR:
+Or run the compiled JAR (note: the JAR name comes from the Maven artifactId in pom.xml):
 
 ```bash
 java -cp target/CC_Project-vm-scaling-task1-0.0.1-SNAPSHOT.jar horizontal.HorizontalScaling
